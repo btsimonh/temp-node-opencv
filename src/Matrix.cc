@@ -1,5 +1,9 @@
 #include "Contours.h"
 #include "Matrix.h"
+#include "Point.h"
+#include "Size.h"
+#include "Rect.h"
+#include "Scalar.h"
 #include "OpenCV.h"
 #include <string.h>
 #include <nan.h>
@@ -20,6 +24,8 @@ void Matrix::Init(Local<Object> target) {
   ctor->SetClassName(Nan::New("Matrix").ToLocalChecked());
 
   // Prototype
+  Nan::SetPrototypeMethod(ctor, "setTo", SetTo);
+
   Nan::SetPrototypeMethod(ctor, "row", Row);
   Nan::SetPrototypeMethod(ctor, "col", Col);
   Nan::SetPrototypeMethod(ctor, "pixelRow", PixelRow);
@@ -97,7 +103,6 @@ void Matrix::Init(Local<Object> target) {
   Nan::SetPrototypeMethod(ctor, "equalizeHist", EqualizeHist);
   Nan::SetPrototypeMethod(ctor, "floodFill", FloodFill);
   Nan::SetPrototypeMethod(ctor, "matchTemplate", MatchTemplate);
-  Nan::SetPrototypeMethod(ctor, "matchTemplateByMatrix", MatchTemplateByMatrix);
   Nan::SetPrototypeMethod(ctor, "templateMatches", TemplateMatches);
   Nan::SetPrototypeMethod(ctor, "minMaxLoc", MinMaxLoc);
   Nan::SetPrototypeMethod(ctor, "pushBack", PushBack);
@@ -109,13 +114,13 @@ void Matrix::Init(Local<Object> target) {
   Nan::SetMethod(ctor, "Eye", Eye);
   Nan::SetMethod(ctor, "getRotationMatrix2D", GetRotationMatrix2D);
   Nan::SetPrototypeMethod(ctor, "copyWithMask", CopyWithMask);
-  Nan::SetPrototypeMethod(ctor, "setWithMask", SetWithMask);
-  Nan::SetPrototypeMethod(ctor, "meanWithMask", MeanWithMask);
   Nan::SetPrototypeMethod(ctor, "mean", Mean);
   Nan::SetPrototypeMethod(ctor, "shift", Shift);
   Nan::SetPrototypeMethod(ctor, "reshape", Reshape);
   Nan::SetPrototypeMethod(ctor, "release", Release);
   Nan::SetPrototypeMethod(ctor, "subtract", Subtract);
+
+  Nan::SetPrototypeMethod(ctor, "toString", ToString);
 
   target->Set(Nan::New("Matrix").ToLocalChecked(), ctor->GetFunction());
 };
@@ -151,6 +156,14 @@ NAN_METHOD(Matrix::New) {
 
   mat->Wrap(info.Holder());
   info.GetReturnValue().Set(info.Holder());
+}
+
+Local<Object> Matrix::NewInstance() {
+  return Nan::NewInstance(Nan::GetFunction(Nan::New(constructor)).ToLocalChecked()).ToLocalChecked();
+}
+
+bool Matrix::HasInstance(Local<Value> object) {
+  return Nan::New(constructor)->HasInstance(object);
 }
 
 Matrix::Matrix() :
@@ -220,6 +233,25 @@ double Matrix::DblGet(cv::Mat mat, int i, int j) {
   }
 
   return val;
+}
+
+NAN_METHOD(Matrix::SetTo) {
+  SETUP_FUNCTION(Matrix)
+
+  if (info.Length() == 0) {
+    return Nan::ThrowError("Matrix.setTo requires at least 1 argument");
+  }
+
+  Matrix *mask = nullptr;
+  MATRIX_FROM_ARGS(mask, 1)
+
+  if (info[0]->IsNumber()) {
+    self->mat.setTo(info[0]->NumberValue(), mask == nullptr ? cv::noArray() : mask->mat);
+  } else if (HasInstance(info[0])) {
+    self->mat.setTo(UNWRAP_ARG(Matrix, 0)->mat, mask == nullptr ? cv::noArray() : mask->mat);
+  } else {
+    Nan::ThrowTypeError("No matching call signature found");
+  }
 }
 
 NAN_METHOD(Matrix::Pixel) {
@@ -496,11 +528,7 @@ NAN_METHOD(Matrix::Norm) {
 NAN_METHOD(Matrix::Size) {
   SETUP_FUNCTION(Matrix)
 
-  v8::Local < v8::Array > arr = Nan::New<Array>(2);
-  arr->Set(0, Nan::New<Number>(self->mat.size().height));
-  arr->Set(1, Nan::New<Number>(self->mat.size().width));
-
-  info.GetReturnValue().Set(arr);
+  info.GetReturnValue().Set(Size::NewInstance(self->mat.size()));
 }
 
 NAN_METHOD(Matrix::Type) {
@@ -607,7 +635,7 @@ NAN_METHOD(Matrix::PixelCol) {
   int height = self->mat.size().height;
   int x = info[0]->IntegerValue();
   v8::Local < v8::Array > arr;
-  
+
   if (self->mat.channels() == 3) {
     arr = Nan::New<Array>(height * 3);
     for (int y = 0; y < height; y++) {
@@ -746,7 +774,7 @@ public:
     };
 
     Nan::TryCatch try_catch;
-    callback->Call(2, argv);
+    callback->Call(Nan::GetCurrentContext()->Global(), 2, argv);
     if (try_catch.HasCaught()) {
       Nan::FatalException(try_catch);
     }
@@ -1266,27 +1294,26 @@ NAN_METHOD(Matrix::Flip) {
 }
 
 NAN_METHOD(Matrix::ROI) {
-  Nan::HandleScope scope;
+  SETUP_FUNCTION(Matrix)
 
-  Matrix *self = Nan::ObjectWrap::Unwrap<Matrix>(info.This());
+  if (info.Length() == 0) {
+    return Nan::ThrowError("Matrix.roi requires at least 1 argument");
+  }
 
-  if ( info.Length() != 4 ) {
-    Nan::ThrowTypeError("ROI requires x,y,w,h arguments");
+  cv::Rect rect;
+  try {
+    SETUP_ARGC_AND_ARGV()
+
+    rect = Rect::RawRect(argc, argv);
+  } catch (const char* msg) {
+    return Nan::ThrowTypeError(msg);
   }
 
   // Although it's an image to return, it is in fact a pointer to ROI of parent matrix
-  Local<Object> img_to_return = Nan::NewInstance(Nan::GetFunction(Nan::New(Matrix::constructor)).ToLocalChecked()).ToLocalChecked();
-  Matrix *img = Nan::ObjectWrap::Unwrap<Matrix>(img_to_return);
+  Local<Object> out = NewInstance();
+  UNWRAP_OBJ(Matrix, out)->mat = self->mat(rect);
 
-  int x = info[0]->IntegerValue();
-  int y = info[1]->IntegerValue();
-  int w = info[2]->IntegerValue();
-  int h = info[3]->IntegerValue();
-
-  cv::Mat roi(self->mat, cv::Rect(x,y,w,h));
-  img->mat = roi;
-
-  info.GetReturnValue().Set(img_to_return);
+  info.GetReturnValue().Set(out);
 }
 
 NAN_METHOD(Matrix::Ptr) {
@@ -1684,7 +1711,8 @@ NAN_METHOD(Matrix::CalcOpticalFlowPyrLK) {
   std::vector<uchar> status;
   std::vector<float> err;
 
-  cv::calcOpticalFlowPyrLK(old_gray, new_gray, old_points, new_points, status, err, winSize, maxLevel, criteria, flags, minEigThreshold);
+  // FIXME
+//  cv::calcOpticalFlowPyrLK(old_gray, new_gray, old_points, new_points, status, err, winSize, maxLevel, criteria, flags, minEigThreshold);
 
   v8::Local<v8::Array> old_arr = Nan::New<Array>(old_points.size());
   v8::Local<v8::Array> new_arr = Nan::New<Array>(new_points.size());
@@ -1829,26 +1857,36 @@ cv::Rect* setRect(Local<Object> objRect, cv::Rect &result) {
 }
 
 NAN_METHOD(Matrix::Resize) {
-  Nan::HandleScope scope;
+  SETUP_FUNCTION(Matrix)
 
-  int x = info[0]->Uint32Value();
-  int y = info[1]->Uint32Value();
-  /*
-   CV_INTER_NN        =0,
-   CV_INTER_LINEAR    =1,
-   CV_INTER_CUBIC     =2,
-   CV_INTER_AREA      =3,
-   CV_INTER_LANCZOS4  =4
-   */
-  int interpolation = (info.Length() < 3) ? (int)cv::INTER_LINEAR : info[2]->Uint32Value();
+  if (info.Length() == 0) {
+    return Nan::ThrowError("Matrix.resize requires at least 1 argument");
+  }
 
-  Matrix *self = Nan::ObjectWrap::Unwrap<Matrix>(info.This());
-  cv::Mat res = cv::Mat(x, y, CV_32FC3);
-  cv::resize(self->mat, res, cv::Size(x, y), 0, 0, interpolation);
-  ~self->mat;
-  self->mat = res;
+  cv::Size size;
+  try {
+    size = Size::RawSize(1, new Local<Value>[1] { info[0] });
+  } catch(const char* msg) {
+    return Nan::ThrowTypeError(msg);
+  }
 
-  return;
+  if (size.area() == 0) {
+    return Nan::ThrowError("Area of size must be > 0");
+  }
+
+  double fx = 0;
+  double fy = 0;
+  int interpolation = cv::INTER_LINEAR;
+
+  DOUBLE_FROM_ARGS(fx, 1)
+  DOUBLE_FROM_ARGS(fy, 2)
+  INT_FROM_ARGS(interpolation, 3)
+
+  Local<Object> res = NewInstance();
+
+  cv::resize(self->mat, Nan::ObjectWrap::Unwrap<Matrix>(res)->mat, size, fx, fy, interpolation);
+
+  info.GetReturnValue().Set(res);
 }
 
 NAN_METHOD(Matrix::Rotate) {
@@ -2446,136 +2484,61 @@ NAN_METHOD(Matrix::TemplateMatches) {
   info.GetReturnValue().Set(probabilites_array);
 }
 
-// @author Evilcat325
 // MatchTemplate accept a Matrix
-// Usage: output = input.matchTemplateByMatrix(matrix. method);
-NAN_METHOD(Matrix::MatchTemplateByMatrix) {
-  Nan::HandleScope scope;
-
-  Matrix *self = Nan::ObjectWrap::Unwrap<Matrix>(info.This());
-  Matrix *templ = Nan::ObjectWrap::Unwrap<Matrix>(info[0]->ToObject());
-
-  Local<Object> out = Nan::NewInstance(Nan::GetFunction(Nan::New(Matrix::constructor)).ToLocalChecked()).ToLocalChecked();
-  Matrix *m_out = Nan::ObjectWrap::Unwrap<Matrix>(out);
-  int cols = self->mat.cols - templ->mat.cols + 1;
-  int rows = self->mat.rows - templ->mat.rows + 1;
-  m_out->mat.create(cols, rows, CV_32FC1);
-
-  /*
-   TM_SQDIFF        =0
-   TM_SQDIFF_NORMED =1
-   TM_CCORR         =2
-   TM_CCORR_NORMED  =3
-   TM_CCOEFF        =4
-   TM_CCOEFF_NORMED =5
-   */
-
-  int method = (info.Length() < 2) ? (int)cv::TM_CCORR_NORMED : info[1]->Uint32Value();
-  if (!(method >= 0 && method <= 5)) method = (int)cv::TM_CCORR_NORMED;
-  cv::matchTemplate(self->mat, templ->mat, m_out->mat, method);
-  info.GetReturnValue().Set(out);
-}
-
-// @author ytham
-// Match Template filter
-// Usage: output = input.matchTemplate("templateFileString", method);
+// Usage: output = input.matchTemplate(matrix, method);
 NAN_METHOD(Matrix::MatchTemplate) {
-  Nan::HandleScope scope;
+  SETUP_FUNCTION(Matrix)
 
-  Matrix *self = Nan::ObjectWrap::Unwrap<Matrix>(info.This());
+  if (info.Length() < 2) {
+    return Nan::ThrowError("Matrix.matchTemplate requires at least 2 arguments");
+  }
 
-  v8::String::Utf8Value args0(info[0]->ToString());
-  std::string filename = std::string(*args0);
-  cv::Mat templ;
-  templ = cv::imread(filename, -1);
+  if (!HasInstance(info[0])) {
+    return Nan::ThrowTypeError("Argument 1 must be a Matrix");
+  }
 
-  Local<Object> out = Nan::NewInstance(Nan::GetFunction(Nan::New(Matrix::constructor)).ToLocalChecked()).ToLocalChecked();
+  if (!info[1]->IsInt32()) {
+    return Nan::ThrowTypeError("Argument 2 must be a number");
+  }
+
+  Matrix *templ = UNWRAP_ARG(Matrix, 0);
+  int method = info[1]->Int32Value();
+
+  Local<Object> out = NewInstance();
   Matrix *m_out = Nan::ObjectWrap::Unwrap<Matrix>(out);
-  int cols = self->mat.cols - templ.cols + 1;
-  int rows = self->mat.rows - templ.rows + 1;
-  m_out->mat.create(cols, rows, CV_32FC1);
+  m_out->mat.create(self->mat.cols - templ->mat.cols + 1, self->mat.rows - templ->mat.rows + 1, CV_32FC1);
 
-  /*
-   TM_SQDIFF        =0
-   TM_SQDIFF_NORMED =1
-   TM_CCORR         =2
-   TM_CCORR_NORMED  =3
-   TM_CCOEFF        =4
-   TM_CCOEFF_NORMED =5
-   */
+#if CV_MAJOR_VERSION < 3
+  cv::matchTemplate(self->mat, templ->mat, m_out->mat, method);
+#else
+  Matrix *mask = nullptr;
+  MATRIX_FROM_ARGS(mask, 2)
 
-  int method = (info.Length() < 2) ? (int)cv::TM_CCORR_NORMED : info[1]->Uint32Value();
-  cv::matchTemplate(self->mat, templ, m_out->mat, method);
-  cv::normalize(m_out->mat, m_out->mat, 0, 1, cv::NORM_MINMAX, -1, cv::Mat());
-  double minVal;
-  double maxVal;
-  cv::Point minLoc;
-  cv::Point maxLoc;
-  cv::Point matchLoc;
-
-  minMaxLoc(m_out->mat, &minVal, &maxVal, &minLoc, &maxLoc, cv::Mat());
-
-  if(method  == CV_TM_SQDIFF || method == CV_TM_SQDIFF_NORMED) {
-    matchLoc = minLoc;
+  if (mask == nullptr) {
+    cv::matchTemplate(self->mat, templ->mat, m_out->mat, method);
+  } else {
+    cv::matchTemplate(self->mat, templ->mat, m_out->mat, method, mask->mat);
   }
-  else {
-    matchLoc = maxLoc;
-  }
+#endif
 
-  //detected ROI
-  unsigned int roi_x = matchLoc.x;
-  unsigned int roi_y = matchLoc.y;
-  unsigned int roi_width = templ.cols;
-  unsigned int roi_height = templ.rows;
-
-  //draw rectangle
-  if(info.Length() >= 3) {
-    cv::Rect roi(roi_x,roi_y,roi_width,roi_height);
-    cv::rectangle(self->mat, roi, cv::Scalar(0,0,255));
-  }
-
-  m_out->mat.convertTo(m_out->mat, CV_8UC1, 255, 0);
-
-  v8::Local <v8::Array> arr = Nan::New<v8::Array>(5);
-  arr->Set(0, out);
-  arr->Set(1, Nan::New<Number>(roi_x));
-  arr->Set(2, Nan::New<Number>(roi_y));
-  arr->Set(3, Nan::New<Number>(roi_width));
-  arr->Set(4, Nan::New<Number>(roi_height));
-
-  info.GetReturnValue().Set(arr);
+  info.GetReturnValue().Set(out);
 }
 
 // @author ytham
 // Min/Max location
 NAN_METHOD(Matrix::MinMaxLoc) {
-  Nan::HandleScope scope;
+  SETUP_FUNCTION(Matrix)
 
-  Matrix *self = Nan::ObjectWrap::Unwrap<Matrix>(info.This());
-  double minVal; double maxVal; cv::Point minLoc; cv::Point maxLoc;
+  double minVal, maxVal;
+  cv::Point minLoc, maxLoc;
   cv::minMaxLoc(self->mat, &minVal, &maxVal, &minLoc, &maxLoc, cv::Mat() );
-
-  Local<Value> v_minVal = Nan::New<Number>(minVal);
-  Local<Value> v_maxVal = Nan::New<Number>(maxVal);
-  Local<Value> v_minLoc_x = Nan::New<Number>(minLoc.x);
-  Local<Value> v_minLoc_y = Nan::New<Number>(minLoc.y);
-  Local<Value> v_maxLoc_x = Nan::New<Number>(maxLoc.x);
-  Local<Value> v_maxLoc_y = Nan::New<Number>(maxLoc.y);
-
-  Local<Object> o_minLoc = Nan::New<Object>();
-  o_minLoc->Set(Nan::New<String>("x").ToLocalChecked(), v_minLoc_x);
-  o_minLoc->Set(Nan::New<String>("y").ToLocalChecked(), v_minLoc_y);
-
-  Local<Object> o_maxLoc = Nan::New<Object>();
-  o_maxLoc->Set(Nan::New<String>("x").ToLocalChecked(), v_maxLoc_x);
-  o_maxLoc->Set(Nan::New<String>("y").ToLocalChecked(), v_maxLoc_y);
 
   // Output result object
   Local<Object> result = Nan::New<Object>();
-  result->Set(Nan::New<String>("minVal").ToLocalChecked(), v_minVal);
-  result->Set(Nan::New<String>("maxVal").ToLocalChecked(), v_maxVal);
-  result->Set(Nan::New<String>("minLoc").ToLocalChecked(), o_minLoc);
-  result->Set(Nan::New<String>("maxLoc").ToLocalChecked(), o_maxLoc);
+  result->Set(Nan::New<String>("minVal").ToLocalChecked(), Nan::New<Number>(minVal));
+  result->Set(Nan::New<String>("maxVal").ToLocalChecked(), Nan::New<Number>(maxVal));
+  result->Set(Nan::New<String>("minLoc").ToLocalChecked(), Point::NewInstance(minLoc.x, minLoc.y));
+  result->Set(Nan::New<String>("maxLoc").ToLocalChecked(), Point::NewInstance(maxLoc.x, maxLoc.y));
 
   info.GetReturnValue().Set(result);
 }
@@ -2696,51 +2659,13 @@ NAN_METHOD(Matrix::CopyWithMask) {
   return;
 }
 
-NAN_METHOD(Matrix::SetWithMask) {
-  SETUP_FUNCTION(Matrix)
-
-  // param 0 - target value:
-  Local < Object > valArray = info[0]->ToObject();
-  cv::Scalar newvals;
-  newvals.val[0] = valArray->Get(0)->NumberValue();
-  newvals.val[1] = valArray->Get(1)->NumberValue();
-  newvals.val[2] = valArray->Get(2)->NumberValue();
-
-  // param 1 - mask. same size as src and dest
-  Matrix *mask = Nan::ObjectWrap::Unwrap<Matrix>(info[1]->ToObject());
-
-  self->mat.setTo(newvals, mask->mat);
-
-  return;
-}
-
-NAN_METHOD(Matrix::MeanWithMask) {
-  SETUP_FUNCTION(Matrix)
-
-  // param 0 - mask. same size as src and dest
-  Matrix *mask = Nan::ObjectWrap::Unwrap<Matrix>(info[0]->ToObject());
-
-  cv::Scalar means = cv::mean(self->mat, mask->mat);
-  v8::Local < v8::Array > arr = Nan::New<Array>(4);
-  arr->Set(0, Nan::New<Number>(means[0]));
-  arr->Set(1, Nan::New<Number>(means[1]));
-  arr->Set(2, Nan::New<Number>(means[2]));
-  arr->Set(3, Nan::New<Number>(means[3]));
-
-  info.GetReturnValue().Set(arr);
-}
-
 NAN_METHOD(Matrix::Mean) {
   SETUP_FUNCTION(Matrix)
 
-  cv::Scalar means = cv::mean(self->mat);
-  v8::Local<v8::Array> arr = Nan::New<Array>(4);
-  arr->Set(0, Nan::New<Number>(means[0]));
-  arr->Set(1, Nan::New<Number>(means[1]));
-  arr->Set(2, Nan::New<Number>(means[2]));
-  arr->Set(3, Nan::New<Number>(means[3]));
+  Matrix *mask = nullptr;
+  MATRIX_FROM_ARGS(mask, 1)
 
-  info.GetReturnValue().Set(arr);
+  info.GetReturnValue().Set(Scalar::NewInstance(cv::mean(self->mat, mask == nullptr ? cv::noArray() : mask->mat)));
 }
 
 NAN_METHOD(Matrix::Shift) {
@@ -2834,4 +2759,13 @@ NAN_METHOD(Matrix::Subtract) {
   self->mat -= other->mat;
 
   return;
+}
+
+NAN_METHOD(Matrix::ToString) {
+  SETUP_FUNCTION(Matrix)
+
+  std::ostringstream stream;
+  stream << self->mat;
+
+  info.GetReturnValue().Set(Nan::New<String>(stream.str()).ToLocalChecked());
 }

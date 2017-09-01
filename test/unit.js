@@ -1,50 +1,193 @@
 var fs = require('fs')
+  , util = require('util')
+  , path = require('path')
   , test = require('tape')
   , cv = null
 
-
+var PATH_TO_MONA_PNG = path.resolve(__dirname, '../examples/files/mona.png');
 
 test("Smoke tests / Can Import", function(t){
   cv = require('../lib/opencv')
   t.ok(cv, "imported fine")
   t.ok(cv.version, "version is there:" + cv.version)
   t.ok(cv.Point, "point is there")
+  t.ok(cv.Size, "size is there")
+  t.ok(cv.Rect, "rect is there")
   t.ok(cv.Matrix, "matrix is there")
   t.end()
 })
 
-
-test('importing library multiple times is ok', function(t){
-  var cv1 = require('../lib/opencv')
-    , cv2 = require('../lib/opencv')
-    cv1.readImage('./examples/files/mona.png', function(err, im){
-      t.error(err)
-      cv2.readImage('./examples/files/mona.png', function(err, im){
-        t.error(err)
-        t.end();
-      });
-    });
-})
-
+test("readImage", function(t) {
+  t.plan(8)
+  t.throws(function() {cv.readImage()}, /readImage requires at least 1 arguments/)
+  t.throws(function() {cv.readImage(0)}, /Argument 1 must be a string or a Buffer/)
+  t.throws(function() {cv.readImage(PATH_TO_MONA_PNG, 'not-a-function')}, /Argument 2 must be a Function/)
+  cv.readImage(PATH_TO_MONA_PNG, function(err, im) {
+    t.notok(err, 'should not be defined')
+    t.ok(im)
+  })
+  var promise = cv.readImage(PATH_TO_MONA_PNG);
+  t.ok(promise);
+  t.ok(promise instanceof Promise);
+  promise.then(function(im) {
+    t.ok(im)
+  }, function(err) {
+    t.notok(err, 'should not be defined')
+  })
+});
 
 test('Point', function(t){
+  var x1 = 1,
+      y1 = 2,
+      p1, p2, p3, p4,
+      x2 = 3,
+      y2 = 4
 
-  t.ok(new cv.Point(1, 2))
-  t.throws(function () { cv.Point(1, 2)}, TypeError, "cannot call without new")
+  t.test('constructor', function(t) {
+    t.throws(function () {cv.Point()}, TypeError)
+    t.throws(function () {new cv.Point({})}, TypeError)
+    t.throws(function () {new cv.Point(null)}, TypeError)
 
-  t.equal(new cv.Point(1, 2).x, 1)
-  t.equal(new cv.Point(1, 2).y, 2)
-  t.equal(Math.round(new cv.Point(1.1, 2).x * 100), 110)
-  t.equal(Math.round(new cv.Point(1.2, 2.75).y *100), 275)
+    p1 = new cv.Point()
+    p2 = new cv.Point({x: x1, y: y1})
+    p3 = new cv.Point(x1, y1)
+    p4 = new cv.Point(p2)
 
-  t.throws(function () {new cv.Point(1.1, 2).x = 5}, Error, "Points are immutable")
-  t.throws(function () {new cv.Point(1.1, 2).y = 5}, Error, "Points are immutable")
+    t.ok(p1 && p2 && p3 && p4, 'should be defined')
+    t.ok(typeof p1 === 'object', 'should be an object')
+    t.ok(p1 instanceof cv.Point, 'should be an instance of Point')
 
-  var p1 = new cv.Point(3, 6)
-    , p2 = new cv.Point(5, 7)
+    t.end()
+  })
 
-  t.ok(p1.dot);
-  t.equal(p1.dot(p2), 57);
+  t.test('enumerator', function(t) {
+    t.equal(Object.keys(p1).length, 2)
+    t.ok(Object.keys(p1).indexOf('x') > -1)
+    t.ok(Object.keys(p1).indexOf('y') > -1)
+
+    t.end()
+  })
+
+  t.test('property getter', function(t) {
+    t.equal(p1.x, 0)
+    t.equal(p1.y, 0)
+
+    t.equal(p2.x, x1)
+    t.equal(p2.y, y1)
+
+    t.equal(p3.x, x1)
+    t.equal(p3.y, y1)
+
+    t.equal(p4.x, x1)
+    t.equal(p4.y, y1)
+
+    t.end()
+  })
+
+  t.test('property setter', function(t) {
+    t.throws(function () {p1.x = 'not a number'}, TypeError, 'value must be a number')
+    t.throws(function () {p1.y = 'not a number'}, TypeError, 'value must be a number')
+
+    p1.x = x2
+    p1.y = y2
+
+    t.equal(p1.x, x2)
+    t.equal(p1.y, y2)
+
+    t.end()
+  })
+
+  t.test('prototype', function(t) {
+    t.test('dot product', function(t) {
+      t.ok(p1.dot);
+      t.equal(p1.dot(p2), x1 * x2 + y1 * y2);
+
+      t.end()
+    })
+
+    t.end()
+  })
+
+  t.end()
+})
+
+test('Size', function(t){
+  var w1 = 1,
+      h1 = 2,
+      s1, s2, s3, s4,
+      w2 = 3,
+      h2 = 4
+
+  t.test('constructor', function(t) {
+    t.throws(function () {cv.Size()}, TypeError)
+    t.throws(function () {new cv.Size({})}, TypeError)
+    t.throws(function () {new cv.Size(null)}, TypeError)
+
+    s1 = new cv.Size()
+    s2 = new cv.Size({width: w1, height: h1})
+    s3 = new cv.Size(w1, h1)
+    s4 = new cv.Size(s2)
+
+    t.ok(s1 && s2 && s3 && s4, 'should be defined')
+    t.ok(typeof s1 === 'object', 'should be an object')
+    t.ok(s1 instanceof cv.Size, 'should be an instance of Size')
+
+    t.end()
+  })
+
+  t.test('enumerator', function(t) {
+    t.equal(Object.keys(s1).length, 2)
+    t.ok(Object.keys(s1).indexOf('width') > -1)
+    t.ok(Object.keys(s1).indexOf('height') > -1)
+
+    t.end()
+  })
+
+  t.test('property getter', function(t) {
+    t.equal(s1.width, 0)
+    t.equal(s1.height, 0)
+
+    t.equal(s2.width, w1)
+    t.equal(s2.height, h1)
+
+    t.equal(s3.width, w1)
+    t.equal(s3.height, h1)
+
+    t.equal(s4.width, w1)
+    t.equal(s4.height, h1)
+
+    t.end()
+  })
+
+  t.test('property setter', function(t) {
+    t.throws(function () {s1.width = 'not a number'}, TypeError, 'value must be a number')
+    t.throws(function () {s1.height = 'not a number'}, TypeError, 'value must be a number')
+
+    s1.width = w2
+    s1.height = h2
+
+    t.equal(s1.width, w2)
+    t.equal(s1.height, h2)
+
+    t.end()
+  })
+
+  t.test('prototype', function(t) {
+    t.test('area', function(t) {
+      t.ok(s1.area)
+      t.equal(s1.area(), w2 * h2)
+
+      t.end()
+    })
+
+    t.end()
+  })
+
+  t.test('inspect', function(t) {
+    t.ok(util.inspect(s1))
+
+    t.end()
+  })
 
   t.end()
 })
@@ -76,11 +219,12 @@ test('Matrix accessors', function(assert){
   assert.equal(mat.height(), 6);
 
   mat = new cv.Matrix(6,7);
-  assert.deepEqual(mat.size(), [6, 7]);
+  assert.equal(mat.size().height, 6);
+  assert.equal(mat.size().width, 7);
 
   mat = new cv.Matrix(6,7);
   assert.equal(mat.width(), 7);
-  mat.resize(8,9);
+  mat.resize(new cv.Size(8,9));
   assert.equal(mat.width(), 8);
 
   mat = new cv.Matrix.Eye(4,4)

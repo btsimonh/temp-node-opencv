@@ -2,22 +2,34 @@
 #include "OpenCV.h"
 #include "../inc/Matrix.h"
 
+#define MATRIX_FROM_ARGS(NAME, IND) \
+  if (info.Length() > IND && Matrix::HasInstance(info[IND])) { \
+    NAME = UNWRAP_ARG(Matrix, IND); \
+  }
+
 class Matrix: public node_opencv::Matrix{
 public:
   static Nan::Persistent<FunctionTemplate> constructor;
   static void Init(Local<Object> target);
   static NAN_METHOD(New);
+
   Matrix();
   Matrix(cv::Mat other, cv::Rect roi);
   Matrix(int rows, int cols);
   Matrix(int rows, int cols, int type);
   Matrix(int rows, int cols, int type, Local<Object> scalarObj);
 
+  static Local<Object> NewInstance();
+
+  static bool HasInstance(Local<Value> object);
+
   static double DblGet(cv::Mat mat, int i, int j);
 
   JSFUNC(Zeros)  // factory
   JSFUNC(Ones)  // factory
   JSFUNC(Eye)  // factory
+
+  JSFUNC(SetTo)
 
   JSFUNC(Get)  // at
   JSFUNC(Set)
@@ -125,8 +137,6 @@ public:
   JSFUNC(WarpPerspective)
 
   JSFUNC(CopyWithMask)
-  JSFUNC(SetWithMask)
-  JSFUNC(MeanWithMask)
   JSFUNC(Mean)
   JSFUNC(Shift)
   JSFUNC(Reshape)
@@ -134,6 +144,9 @@ public:
   JSFUNC(Release)
 
   JSFUNC(Subtract)
+
+  static NAN_METHOD(ToString);
+
   /*
    static Handle<Value> Val(const Arguments& info);
    static Handle<Value> RowRange(const Arguments& info);

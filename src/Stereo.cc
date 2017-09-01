@@ -2,7 +2,11 @@
 #include "Stereo.h"
 
 #if CV_MAJOR_VERSION >= 3
+#ifdef __GNUC__
 #warning TODO: port me to OpenCV 3
+#else
+#pragma message("TODO: port me to OpenCV 3")
+#endif
 #endif
 
 #if CV_MAJOR_VERSION < 3

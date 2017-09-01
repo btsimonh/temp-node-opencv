@@ -34,6 +34,10 @@
 using namespace v8;
 using namespace node;
 
+#define UNWRAP_OBJ(TYP, OBJ) Nan::ObjectWrap::Unwrap<TYP>(OBJ)
+
+#define UNWRAP_ARG(TYP, IND) Nan::ObjectWrap::Unwrap<TYP>(info[IND]->ToObject())
+
 #define REQ_FUN_ARG(I, VAR)                                             \
   if (info.Length() <= (I) || !info[I]->IsFunction())                   \
     return Nan::ThrowTypeError("Argument " #I " must be a function");  \
@@ -41,7 +45,7 @@ using namespace node;
 
 #define SETUP_FUNCTION(TYP)	\
 	Nan::HandleScope scope;		\
-	TYP *self = Nan::ObjectWrap::Unwrap<TYP>(info.This());
+	TYP *self = UNWRAP_OBJ(TYP, info.This());
 
 #define JSFUNC(NAME) \
   static NAN_METHOD(NAME);
@@ -53,14 +57,19 @@ using namespace node;
   Nan::ThrowError( ERR );
 
 #define INT_FROM_ARGS(NAME, IND) \
-  if (info[IND]->IsInt32()){ \
-    NAME = info[IND]->Uint32Value(); \
+  if (info.Length() > IND && info[IND]->IsNumber()) { \
+    NAME = info[IND]->Int32Value(); \
   }
 
 #define DOUBLE_FROM_ARGS(NAME, IND) \
-  if (info[IND]->IsInt32()){ \
+  if (info.Length() > IND && info[IND]->IsNumber()){ \
     NAME = info[IND]->NumberValue(); \
   }
+
+#define SETUP_ARGC_AND_ARGV() \
+  int argc = info.Length(); \
+  Local<Value> *argv = new Local<Value>[argc](); \
+  for (int n = 0; n < argc; ++n) argv[n] = info[n];
 
 class OpenCV: public Nan::ObjectWrap {
 public:
