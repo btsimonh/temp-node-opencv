@@ -1120,7 +1120,7 @@ NAN_METHOD(Matrix::Eye) {
 
 class ConvertGrayscaleASyncWorker: public Nan::AsyncWorker {
 public:
-  ConvertGrayscaleASyncWorker(Nan::Callback *callback, cv::Mat *image) :
+  ConvertGrayscaleASyncWorker(Nan::Callback *callback, Matrix *image) :
       Nan::AsyncWorker(callback),
       image(image),
       res(0){
@@ -1167,7 +1167,7 @@ public:
   }
 
 private:
-  cv::Mat *image;
+  Matrix *image;
   int res;
 };
 
