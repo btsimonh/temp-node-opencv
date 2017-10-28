@@ -1154,7 +1154,7 @@ public:
         }
     } else {
         Local<Value> argv[] = {
-          Nan::Nan::New("C++ exception").ToLocalChecked(), // err
+          Nan::New("C++ exception").ToLocalChecked(), // err
           Nan::New<Number>(res) //result
         };
 
@@ -1184,7 +1184,7 @@ NAN_METHOD(Matrix::ConvertGrayscale) {
     // if not a 3 channel image, just callback immediately with error.
     if (self->mat.channels() != 3) {
         Local<Value> argv[] = {
-          Nan::Nan::New("Image is no 3-channel").ToLocalChecked(), // err
+          Nan::New("Image is no 3-channel").ToLocalChecked(), // err
           Nan::New<Number>(0) //result
         };
 
