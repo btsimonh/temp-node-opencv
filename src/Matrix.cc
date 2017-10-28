@@ -1179,7 +1179,7 @@ NAN_METHOD(Matrix::ConvertGrayscale) {
 
   // if we have an argument, if it's a function, then use async
   if(info.Length() > 0){
-    REQ_FUN_ARG(1, cb);
+    REQ_FUN_ARG(0, cb);
     Nan::Callback *callback = new Nan::Callback(cb.As<Function>());
     // if not a 3 channel image, just callback immediately with error.
     if (self->mat.channels() != 3) {
